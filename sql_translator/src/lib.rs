@@ -125,6 +125,18 @@ fn preprocess_sql(sql: &str) -> String {
         s = re.replace_all(&s, "COLLATE \"nocase\"").to_string();
     }
 
+    // Map Plex's custom COLLATE collating to our custom PG collation
+    if s.to_uppercase().contains("COLLATE COLLATING") {
+        let re = regex::Regex::new(r"(?i)COLLATE\s+collating\b").unwrap();
+        s = re.replace_all(&s, "COLLATE \"nocase\"").to_string();
+    }
+
+    // Strip Plex's custom tokenize=collating from FTS table creations
+    if s.to_uppercase().contains("TOKENIZE=COLLATING") || s.to_uppercase().contains("TOKENIZE = COLLATING") {
+        let re = regex::Regex::new(r"(?i)[,\s]*tokenize\s*=\s*collating\b").unwrap();
+        s = re.replace_all(&s, "").to_string();
+    }
+
     // Map SQLite strftime to PG to_char
     s = translate_strftime(&s);
 
