@@ -324,8 +324,11 @@ int sqlite3_errcode(sqlite3* db) {
 int sqlite3_prepare_v2(sqlite3 *db, const char *zSql, int nByte, sqlite3_stmt **ppStmt, const char **pzTail) {
     initialize_hooks();
     printf("[HOOK] Intercepted sqlite3_prepare_v2: %s\n", zSql);
-    char* translated_sql = translate_sql(zSql);
-    if (translated_sql) {
+    char* rs_translated = translate_sql(zSql);
+    char* translated_sql = NULL;
+    if (rs_translated) {
+        translated_sql = strdup(rs_translated);
+        free_translated_sql(rs_translated);
         translated_sql = process_schema_aware_upsert(pg_conn, translated_sql);
         translated_sql = process_internal_functions(translated_sql);
         printf("[HOOK] Translated SQL: %s\n", translated_sql);
@@ -333,8 +336,10 @@ int sqlite3_prepare_v2(sqlite3 *db, const char *zSql, int nByte, sqlite3_stmt **
     int rc = original_sqlite3_prepare_v2(db, zSql, nByte, ppStmt, pzTail);
     if (rc == SQLITE_OK && translated_sql) {
         add_mapping(*ppStmt, translated_sql);
-        free_translated_sql(translated_sql);
-    } else if (translated_sql) free_translated_sql(translated_sql);
+        free(translated_sql);
+    } else if (translated_sql) {
+        free(translated_sql);
+    }
     return rc;
 }
 
@@ -523,8 +528,11 @@ int sqlite3_finalize(sqlite3_stmt *pStmt) {
 int sqlite3_exec(sqlite3* db, const char *sql, int (*callback)(void*,int,char**,char**), void *arg, char **errmsg) {
     initialize_hooks();
     printf("[HOOK] Intercepted sqlite3_exec: %s\n", sql);
-    char* translated_sql = translate_sql(sql);
-    if (translated_sql) {
+    char* rs_translated = translate_sql(sql);
+    char* translated_sql = NULL;
+    if (rs_translated) {
+        translated_sql = strdup(rs_translated);
+        free_translated_sql(rs_translated);
         translated_sql = process_schema_aware_upsert(pg_conn, translated_sql);
         translated_sql = process_internal_functions(translated_sql);
         printf("[HOOK] Translated SQL: %s\n", translated_sql);
@@ -535,9 +543,11 @@ int sqlite3_exec(sqlite3* db, const char *sql, int (*callback)(void*,int,char**,
                 if (PQresultStatus(res) != PGRES_COMMAND_OK && PQresultStatus(res) != PGRES_TUPLES_OK) {
                     set_last_error(res);
                     fprintf(stderr, "[HOOK] Postgres execution failed: %s\n", PQerrorMessage(pg_conn));
-                    if (errmsg) *errmsg = strdup(last_pg_error_msg);
+                    if (errmsg) {
+                        *errmsg = sqlite3_mprintf("%s", last_pg_error_msg);
+                    }
                     PQclear(res);
-                    free_translated_sql(translated_sql);
+                    free(translated_sql);
                     return last_sqlite_error;
                 }
                 update_rowid_and_changes(pg_conn, res);
@@ -545,7 +555,7 @@ int sqlite3_exec(sqlite3* db, const char *sql, int (*callback)(void*,int,char**,
                 PQclear(res);
             }
         }
-        free_translated_sql(translated_sql);
+        free(translated_sql);
     }
     return original_sqlite3_exec(db, sql, callback, arg, errmsg);
 }
