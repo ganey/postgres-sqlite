@@ -62,18 +62,26 @@ jobs:
     - name: Install runtime dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y libsqlite3-dev libpq-dev
+        sudo apt-get install -y libsqlite3-dev libpq-dev postgresql-client
 
     - name: Download binaries
       uses: actions/download-artifact@v4
       with:
         name: binaries
 
+    - name: Wait for Postgres
+      run: |
+        until pg_isready -h 127.0.0.1 -U postgres; do
+          echo "Waiting for Postgres..."
+          sleep 2
+        done
+
     - name: Set permissions
       run: chmod +x test_sqlite
 
     - name: Run C Integration Test
       env:
-        PG_CONNINFO: "host=localhost user=postgres password=password dbname=postgres"
+        PG_CONNINFO: "host=127.0.0.1 user=postgres password=password dbname=postgres"
       run: |
-        LD_PRELOAD=./sqlite_hook.so ./test_sqlite
+        # Ensure we actually connected to Postgres
+        LD_PRELOAD=./sqlite_hook.so ./test_sqlite | grep "Connected to PostgreSQL successfully"
