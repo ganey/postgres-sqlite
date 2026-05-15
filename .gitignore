@@ -1,0 +1,15 @@
+# C artifacts
+*.so
+test_sqlite
+test.db
+
+# Rust artifacts
+sql_translator/target/
+
+# Node artifacts (if any)
+node_modules/
+package-lock.json
+
+# IDEs
+.vscode/
+.idea/

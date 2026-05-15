@@ -1,0 +1,12 @@
+[package]
+name = "sql_translator"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+sqlparser = "0.47"
+regex = "1"
+
