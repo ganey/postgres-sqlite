@@ -119,11 +119,17 @@ jobs:
 
   release:
     needs: [test-postgres, build-arch]
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+      pull-requests: write
     steps:
+    - uses: googleapis/release-please-action@v4
+      id: release
+      with:
+        release-type: simple
+
     - uses: actions/checkout@v4
 
     - name: Download ubuntu binaries
@@ -144,8 +150,10 @@ jobs:
         mv binaries-arch/sqlite_hook.so binaries-arch/sqlite_hook-arch.so
 
     - name: Create Release
+      if: ${{ steps.release.outputs.release_created }}
       uses: softprops/action-gh-release@v2
       with:
+        tag_name: ${{ steps.release.outputs.tag_name }}
         files: |
           binaries-ubuntu/sqlite_hook-ubuntu.so
           binaries-arch/sqlite_hook-arch.so
