@@ -3,6 +3,8 @@ name: Build and Test
 on:
   push:
     branches: [ main ]
+    tags:
+      - 'v*'
   pull_request:
     branches: [ main ]
 
@@ -30,6 +32,33 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: binaries
+        path: |
+          sqlite_hook.so
+          test_sqlite
+          test_sqlite_wrapper.sh
+
+  build-arch:
+    runs-on: ubuntu-24.04
+    container:
+      image: archlinux:base-devel
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        pacman -Syu --noconfirm
+        pacman -S --noconfirm sqlite postgresql-libs rust
+
+    - name: Build
+      run: make
+
+    - name: Run Rust Unit Tests
+      run: cd sql_translator && cargo test
+
+    - name: Upload binaries
+      uses: actions/upload-artifact@v4
+      with:
+        name: binaries-arch
         path: |
           sqlite_hook.so
           test_sqlite
@@ -87,3 +116,36 @@ jobs:
       run: |
         # Run and show output, but fail if connection message is missing
         ./test_sqlite_wrapper.sh
+
+  release:
+    needs: [test-postgres, build-arch]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Download ubuntu binaries
+      uses: actions/download-artifact@v4
+      with:
+        name: binaries
+        path: binaries-ubuntu
+
+    - name: Download arch binaries
+      uses: actions/download-artifact@v4
+      with:
+        name: binaries-arch
+        path: binaries-arch
+
+    - name: Rename binaries
+      run: |
+        mv binaries-ubuntu/sqlite_hook.so binaries-ubuntu/sqlite_hook-ubuntu.so
+        mv binaries-arch/sqlite_hook.so binaries-arch/sqlite_hook-arch.so
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          binaries-ubuntu/sqlite_hook-ubuntu.so
+          binaries-arch/sqlite_hook-arch.so
