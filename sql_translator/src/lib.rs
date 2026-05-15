@@ -297,4 +297,17 @@ mod tests {
         assert!(output.contains("information_schema.columns"));
         assert!(output.contains("WHERE table_name = 'users'"));
     }
+
+    #[test]
+    fn test_plex_collating_and_tokenizer() {
+        let input1 = "CREATE TABLE items (name TEXT COLLATE collating)";
+        let output1 = perform_translation(input1);
+        assert!(output1.contains("COLLATE \"nocase\""));
+        assert!(!output1.to_lowercase().contains("collating"));
+
+        let input2 = "CREATE VIRTUAL TABLE search USING fts4(content='items', tokenize=collating)";
+        let output2 = perform_translation(input2);
+        assert!(!output2.to_lowercase().contains("tokenize"));
+        assert!(!output2.to_lowercase().contains("collating"));
+    }
 }
