@@ -9,10 +9,38 @@ on:
 jobs:
   build:
     runs-on: ubuntu-24.04
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential libsqlite3-dev libpq-dev pkg-config
+
+    - name: Set up Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Build
+      run: make
+
+    - name: Run Rust Unit Tests
+      run: cd sql_translator && cargo test
+
+    - name: Upload binaries
+      uses: actions/upload-artifact@v4
+      with:
+        name: binaries
+        path: |
+          sqlite_hook.so
+          test_sqlite
+
+  test-postgres:
+    needs: build
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         postgres-version: [14, 15, 16, 17, 18]
-
+    
     services:
       postgres:
         image: postgres:${{ matrix.postgres-version }}
@@ -31,18 +59,20 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Install dependencies
+    - name: Install runtime dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential libsqlite3-dev libpq-dev pkg-config
+        sudo apt-get install -y libsqlite3-dev libpq-dev
 
-    - name: Set up Rust
-      uses: dtolnay/rust-toolchain@stable
+    - name: Download binaries
+      uses: actions/download-artifact@v4
+      with:
+        name: binaries
 
-    - name: Build
-      run: make
+    - name: Set permissions
+      run: chmod +x test_sqlite
 
-    - name: Run Test Stub
+    - name: Run C Integration Test
       env:
         PG_CONNINFO: "host=localhost user=postgres password=password dbname=postgres"
       run: |
