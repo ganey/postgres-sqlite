@@ -1,0 +1,50 @@
+﻿apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sqlite-app-postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sqlite-app
+  template:
+    metadata:
+      labels:
+        app: sqlite-app
+    spec:
+      initContainers:
+        - name: download-sqlite-hook
+          # Use an image matching your target OS (e.g., Ubuntu 24.04 for Noble based apps)
+          image: ubuntu:24.04
+          command:
+            - /bin/sh
+            - -c
+            - |
+              apt-get update && apt-get install -y curl libpq5
+              # Fetch the pre-compiled hook for your architecture/OS
+              curl -L -o /patch/sqlite_hook.so https://github.com/ganey/postgres-sqlite/releases/download/v1.0.0/sqlite_hook-ubuntu.so
+              # Copy libpq dependency to the shared volume so the hook can find it
+              cp /usr/lib/x86_64-linux-gnu/libpq.so.5* /patch/
+              chmod 644 /patch/sqlite_hook.so /patch/libpq.so.5*
+          volumeMounts:
+            - name: patch-libs
+              mountPath: /patch
+      containers:
+        - name: main
+          image: your-sqlite-app-image:latest
+          env:
+            # PostgreSQL connection details
+            - name: PG_CONNINFO
+              value: "postgresql://user:password@postgres-host:5432/dbname"
+            # Ensure the hook can find its dependencies in the shared volume
+            - name: LD_LIBRARY_PATH
+              value: /patch
+            # Preload the hook to intercept SQLite calls
+            - name: LD_PRELOAD
+              value: /patch/sqlite_hook.so
+          volumeMounts:
+            - name: patch-libs
+              mountPath: /patch
+      volumes:
+        - name: patch-libs
+          emptyDir: {}
