@@ -276,17 +276,29 @@ static void update_rowid_and_changes(PGconn *conn, PGresult *res) {
 static void connect_to_postgres() {
     if (pg_conn) return;
     const char *conninfo = getenv("PG_CONNINFO");
-    if (!conninfo) conninfo = "";
-    if (conninfo[0] != '\0') printf("[HOOK] Connecting to PostgreSQL with: %s\n", conninfo);
-    else printf("[HOOK] Connecting to PostgreSQL using environment variables/defaults\n");
+    if (!conninfo) {
+        printf("[HOOK] PG_CONNINFO env var not found, using defaults\n");
+        conninfo = ""; 
+    }
+    
+    printf("[HOOK] Attempting connection to PostgreSQL with: '%s'\n", conninfo);
     pg_conn = PQconnectdb(conninfo);
+    
     if (PQstatus(pg_conn) != CONNECTION_OK) {
-        fprintf(stderr, "[HOOK] Connection to database failed: %s\n", PQerrorMessage(pg_conn));
+        fprintf(stderr, "[HOOK] FATAL: Connection to PostgreSQL failed: %s\n", PQerrorMessage(pg_conn));
         PQfinish(pg_conn);
         pg_conn = NULL;
     } else {
         printf("[HOOK] Connected to PostgreSQL successfully\n");
-        PQexec(pg_conn, "CREATE COLLATION IF NOT EXISTS \"nocase\" (provider = icu, locale = 'und-u-ks-level2', deterministic = false);");
+        PGresult *res = PQexec(pg_conn, "CREATE COLLATION IF NOT EXISTS \"nocase\" (provider = icu, locale = 'und-u-ks-level2', deterministic = false);");
+        if (res) {
+            if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+                printf("[HOOK] Notice: Failed to create ICU NOCASE collation. %s\n", PQerrorMessage(pg_conn));
+            } else {
+                printf("[HOOK] Ensured \"nocase\" collation exists\n");
+            }
+            PQclear(res);
+        }
     }
 }
 
@@ -525,7 +537,7 @@ int sqlite3_exec(sqlite3* db, const char *sql, int (*callback)(void*,int,char**,
                     fprintf(stderr, "[HOOK] Postgres execution failed: %s\n", PQerrorMessage(pg_conn));
                     if (errmsg) *errmsg = strdup(last_pg_error_msg);
                     PQclear(res);
-                    free(translated_sql);
+                    free_translated_sql(translated_sql);
                     return last_sqlite_error;
                 }
                 update_rowid_and_changes(pg_conn, res);
