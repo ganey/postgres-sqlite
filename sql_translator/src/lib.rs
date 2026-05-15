@@ -125,6 +125,18 @@ fn preprocess_sql(sql: &str) -> String {
         s = re.replace_all(&s, "COLLATE \"nocase\"").to_string();
     }
 
+    // Map Plex's custom COLLATE collating to our custom PG collation
+    if s.to_uppercase().contains("COLLATE COLLATING") {
+        let re = regex::Regex::new(r"(?i)COLLATE\s+collating\b").unwrap();
+        s = re.replace_all(&s, "COLLATE \"nocase\"").to_string();
+    }
+
+    // Strip Plex's custom tokenize=collating from FTS table creations
+    if s.to_uppercase().contains("TOKENIZE=COLLATING") || s.to_uppercase().contains("TOKENIZE = COLLATING") {
+        let re = regex::Regex::new(r"(?i)[,\s]*tokenize\s*=\s*collating\b").unwrap();
+        s = re.replace_all(&s, "").to_string();
+    }
+
     // Map SQLite strftime to PG to_char
     s = translate_strftime(&s);
 
@@ -284,5 +296,18 @@ mod tests {
         let output = perform_translation(input);
         assert!(output.contains("information_schema.columns"));
         assert!(output.contains("WHERE table_name = 'users'"));
+    }
+
+    #[test]
+    fn test_plex_collating_and_tokenizer() {
+        let input1 = "CREATE TABLE items (name TEXT COLLATE collating)";
+        let output1 = perform_translation(input1);
+        assert!(output1.contains("COLLATE \"nocase\""));
+        assert!(!output1.to_lowercase().contains("collating"));
+
+        let input2 = "CREATE VIRTUAL TABLE search USING fts4(content='items', tokenize=collating)";
+        let output2 = perform_translation(input2);
+        assert!(!output2.to_lowercase().contains("tokenize"));
+        assert!(!output2.to_lowercase().contains("collating"));
     }
 }
